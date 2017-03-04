@@ -28,11 +28,21 @@ func writeGaggle(filenames []string) {
 	file.Close()
 }
 
+func conditionallyCreateMigrationsDirectory() {
+	path := "migrations/"
+	_, err := os.Stat(path)
+
+	if err != nil {
+		os.Mkdir(path, 0755)
+	}
+}
+
 func create() {
 	now := time.Now()
 	code := now.Format("20060102150405")
 	filename := fmt.Sprintf("migrations/%s.sql", code)
 	content := []byte("SQL goes here...")
+	conditionallyCreateMigrationsDirectory()
 	err := ioutil.WriteFile(filename, content, 0644)
 	checkError(err)
 }
@@ -117,12 +127,22 @@ func migrate() {
 	}
 }
 
+func checkForRc() {
+	_, err := os.Stat(".gooserc")
+
+	if err != nil {
+		fmt.Println("Can't find .gooserc. Please create it with with your database connection settings and try again.")
+		os.Exit(0)
+	}
+}
+
 func main() {
+	checkForRc()
 	command := os.Args[1]
 
 	if command == "migrate" {
 		migrate()
-	} else if command == "create" {
+	} else if command == "hatch" {
 		create()
 	}
 }
