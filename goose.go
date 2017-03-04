@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -18,14 +19,12 @@ func checkError(e error) {
 }
 
 func writeGaggle(filenames []string) {
-	file, err := os.OpenFile(".gaggle", os.O_APPEND|os.O_CREATE, 0666)
+	joinedFiles := strings.Join(filenames, "\n")
+	newLineSlice := []string{joinedFiles, "\n"}
+	content := strings.Join(newLineSlice, "")
+	file, err := os.OpenFile(".gaggle", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 	checkError(err)
-
-	for i := 0; i < (len(filenames)); i++ {
-		fmt.Println(filenames[i])
-		file.WriteString(fmt.Sprintf("%s\n", filenames[i]))
-	}
-
+	file.WriteString(content)
 	file.Close()
 }
 
@@ -41,12 +40,21 @@ func create() {
 func allMigrations() []string {
 	files, err := ioutil.ReadDir("migrations")
 	checkError(err)
-	filenames := make([]string, len(files)-1)
+	filenames := make([]string, 0)
 	for i := 0; i < (len(files)); i++ {
 		filenames = append(filenames, files[i].Name())
 	}
 
 	return filenames
+}
+
+func lastMigration(gaggle string) string {
+	if gaggle != "" {
+		runMigrations := strings.Split(gaggle, "\n")
+		return runMigrations[len(runMigrations)-1]
+	} else {
+		return ""
+	}
 }
 
 func runMigrations(filenames []string) {
@@ -62,9 +70,10 @@ func runMigrations(filenames []string) {
 	password := config.Get("goose.password").(string)
 
 	if database == "postgres" {
-		executedFiles := make([]string, len(filenames)-1)
+		executedFiles := make([]string, 0)
 
 		for i := 0; i < (len(filenames)); i++ {
+			fmt.Println(fmt.Sprintf("Running Migration: %v", filenames[i]))
 			cmd := exec.Command(executable, "-h", hostname, "-p", port, "-d", name, "-U", username, "-f", fmt.Sprintf("migrations/%s", strings.TrimLeft(filenames[i], " ")))
 			cmd.Env = []string{fmt.Sprintf("PGPASSWORD=%s", password)}
 			var out bytes.Buffer
@@ -76,7 +85,7 @@ func runMigrations(filenames []string) {
 				fmt.Println(fmt.Sprint(err) + ": " + stderr.String())
 				checkError(err)
 			} else {
-				fmt.Printf("%q\n", out.String())
+				fmt.Println(out.String())
 				executedFiles = append(executedFiles, filenames[i])
 			}
 		}
@@ -87,16 +96,24 @@ func runMigrations(filenames []string) {
 
 func migrate() {
 	data, err := ioutil.ReadFile(".gaggle")
-	lastMigration := string(data)
+	lastMigration := lastMigration(strings.Trim(string(data), "\n"))
 
 	if (err != nil) || (lastMigration == "") {
-		fmt.Println("can't find gaggle")
-		filenames := allMigrations()
-		runMigrations(filenames)
+		unrunMigrations := allMigrations()
+		runMigrations(unrunMigrations)
+		fmt.Println("Migrations complete.")
 	} else {
-		fmt.Println("found gaggle")
 		filenames := allMigrations()
-		runMigrations(filenames)
+		i := sort.SearchStrings(filenames, lastMigration)
+
+		if (i + 1) == len(filenames) {
+			fmt.Println("Migrations up to date.")
+		} else {
+			unrunMigrations := filenames[(i + 1):]
+			fmt.Println(unrunMigrations)
+			runMigrations(unrunMigrations)
+			fmt.Println("Migrations complete.")
+		}
 	}
 }
 
