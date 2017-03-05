@@ -120,7 +120,6 @@ func migrate() {
 			fmt.Println("Migrations up to date.")
 		} else {
 			unrunMigrations := filenames[(i + 1):]
-			fmt.Println(unrunMigrations)
 			runMigrations(unrunMigrations)
 			fmt.Println("Migrations complete.")
 		}
